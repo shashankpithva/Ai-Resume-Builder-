@@ -32,16 +32,8 @@ function BuilderContent() {
   const [savedToast, setSavedToast] = useState(false);
   const [showDownloadWarning, setShowDownloadWarning] = useState(false);
   const [showDesktopHint, setShowDesktopHint] = useState(false);
-  const [showMobileWarning, setShowMobileWarning] = useState(false);
   const [paymentDone, setPaymentDone] = useState(false);
   const savedRef = useRef(false);
-
-  // Show mobile warning on page load
-  useEffect(() => {
-    if (typeof window !== "undefined" && window.innerWidth < 640) {
-      setShowMobileWarning(true);
-    }
-  }, []);
 
   // Load Razorpay checkout script
   useEffect(() => {
@@ -267,26 +259,6 @@ function BuilderContent() {
         )}
 
         {/* Mobile warning — always build on desktop */}
-        {showMobileWarning && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full mx-4 p-6 text-center">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-100 to-amber-100 flex items-center justify-center mx-auto mb-4">
-                <Monitor className="w-7 h-7 text-orange-600" />
-              </div>
-              <h3 className="text-lg font-bold text-stone-900 mb-2">Use a Desktop Device</h3>
-              <p className="text-stone-500 text-sm leading-relaxed mb-6">
-                Please build your resume on a <span className="font-semibold text-stone-700">desktop or laptop</span>. Payment and PDF download are only available on desktop. Make sure to use the <span className="font-semibold text-stone-700">same device and browser</span> throughout so your saved resumes stay accessible.
-              </p>
-              <button
-                onClick={() => setShowMobileWarning(false)}
-                className="w-full px-4 py-2.5 bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-600 hover:to-rose-600 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-orange-200"
-              >
-                Got it
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* Desktop hint modal (mobile only) */}
         {showDesktopHint && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in">

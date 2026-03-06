@@ -11,57 +11,79 @@ export function printResume() {
   }
   printStyle.textContent = `
     @media print {
-      @page { size: A4; margin: 0; }
-      body * { visibility: hidden !important; }
-      #resume-print-area,
-      #resume-print-area * { visibility: visible !important; }
-      #resume-print-area {
-        position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
+      @page {
+        size: A4;
+        margin: 0;
+      }
+
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
         width: 210mm !important;
-        height: 297mm !important;
+      }
+
+      /* Hide everything except the print container */
+      body > *:not(#resume-print-container) {
+        display: none !important;
+      }
+
+      nav, footer, header, button, [role="dialog"], .fixed {
+        display: none !important;
+      }
+
+      #resume-print-container {
+        display: block !important;
+        visibility: visible !important;
+        position: static !important;
+        width: 210mm !important;
+        max-width: 210mm !important;
+        height: auto !important;
+        overflow: visible !important;
         background: white !important;
-        box-sizing: border-box !important;
-        z-index: 99999 !important;
-        overflow: hidden !important;
         border: none !important;
         border-radius: 0 !important;
         box-shadow: none !important;
         margin: 0 !important;
-        padding: 0 !important;
+        z-index: 99999 !important;
       }
-      #resume-print-area > * {
+
+      #resume-print-container,
+      #resume-print-container * {
+        visibility: visible !important;
+        overflow: visible !important;
+      }
+
+      /* Ensure template fills at least one full A4 page */
+      #resume-print-container > * {
         min-height: 297mm !important;
       }
-      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    }
 
-    #resume-print-spacer {
-      display: none;
-    }
-    @media print {
-      #resume-print-spacer {
-        display: block !important;
-        visibility: visible !important;
-        height: 297mm !important;
-        width: 210mm !important;
-        position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
-        background: white !important;
-        z-index: 99998 !important;
+      /* Preserve colors and backgrounds */
+      * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
       }
     }
   `;
 
-  // Add an invisible spacer div that guarantees full A4 behind the content
-  let spacer = document.getElementById("resume-print-spacer");
-  if (!spacer) {
-    spacer = document.createElement("div");
-    spacer.id = "resume-print-spacer";
-    document.body.appendChild(spacer);
-  }
+  // Clone the entire resume element (preserving its classes and internal padding)
+  let printContainer = document.getElementById("resume-print-container");
+  if (printContainer) printContainer.remove();
+
+  const clone = el.cloneNode(true) as HTMLElement;
+  clone.id = "resume-print-container";
+  // Only override the outer preview styling, keep internal template padding intact
+  clone.style.border = "none";
+  clone.style.borderRadius = "0";
+  clone.style.boxShadow = "none";
+  clone.style.margin = "0";
+  clone.style.maxWidth = "none";
+  clone.style.width = "100%";
+
+  document.body.appendChild(clone);
 
   window.print();
+
+  // Clean up after print
+  clone.remove();
 }

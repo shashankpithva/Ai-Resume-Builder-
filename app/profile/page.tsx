@@ -341,7 +341,7 @@ export default function ProfilePage() {
 
       <footer className="mt-auto border-t border-stone-200/60 bg-white py-4 text-center">
         <p className="text-xs text-stone-400">
-          For your saved resumes to appear in your account, please use the same browser you originally used to create them.
+          Your saved resumes sync across all your devices.
         </p>
       </footer>
     </div>

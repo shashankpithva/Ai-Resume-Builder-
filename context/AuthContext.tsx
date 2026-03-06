@@ -61,48 +61,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const supabase = createClient();
 
-  // Load resumes: merge localStorage + current state + Supabase — never drop data
+  // Load resumes from Supabase (source of truth), merge with localStorage
   async function loadResumes(userId: string, email: string) {
-    const local = lsLoad(email);
-
-    // Seed state with localStorage if it has entries
-    if (local.length > 0) {
-      setSavedResumes(prev => mergeResumes(prev, local, email));
-    }
-
-    // Sync from Supabase via direct fetch — cross-browser source of truth
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      if (!token) { console.warn("loadResumes: no access token"); return; }
-
-      const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/saved_resumes?user_id=eq.${userId}&order=saved_at.desc`;
-      const res = await fetch(url, {
-        headers: {
-          "apikey": process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-          "Authorization": `Bearer ${token}`,
-        },
-      });
+      const res = await fetch(`/api/resumes?user_id=${userId}`);
 
       if (!res.ok) {
         const body = await res.text();
-        console.error("Supabase fetch error:", res.status, body);
+        console.error("Resumes fetch error:", res.status, body);
         return;
       }
 
       const data = await res.json();
-      console.log(`Supabase returned ${data.length} resumes for user ${userId}`);
+      const remote: SavedResume[] = data.map((row: Record<string, unknown>) => ({
+        id: row.id as string,
+        title: row.title as string,
+        templateId: row.template_id as TemplateId,
+        resume: row.resume_data as GeneratedResume,
+        savedAt: row.saved_at as string,
+      }));
 
-      if (data.length > 0) {
-        const remote: SavedResume[] = data.map((row: Record<string, unknown>) => ({
-          id: row.id as string,
-          title: row.title as string,
-          templateId: row.template_id as TemplateId,
-          resume: row.resume_data as GeneratedResume,
-          savedAt: row.saved_at as string,
-        }));
-        setSavedResumes(prev => mergeResumes(prev, remote, email));
-      }
+      // Merge remote (Supabase) with localStorage, then set as state
+      const local = lsLoad(email);
+      const merged = mergeResumes(local, remote, email);
+      setSavedResumes(merged);
     } catch (e) {
       console.error("loadResumes exception:", e);
     }
@@ -128,12 +110,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    // onAuthStateChange fires INITIAL_SESSION on mount — use it as the
-    // single source of truth instead of calling getSession separately.
+    let currentUid: string | null = null;
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
         const email = session.user.email!;
         const uid = session.user.id;
+
+        // Skip duplicate events for the same user (e.g. TOKEN_REFRESHED after INITIAL_SESSION)
+        if (currentUid === uid && event !== "SIGNED_IN") return;
+        currentUid = uid;
 
         // Show localStorage resumes + cached hasPaid instantly
         const cachedPaid = localStorage.getItem(`has_paid_${email}`) === "true";
@@ -157,6 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Always load from Supabase — this is the cross-browser source of truth
         loadResumes(uid, email);
       } else {
+        currentUid = null;
         setUser(null);
         setUserId(null);
         setSavedResumes([]);
@@ -251,38 +238,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSavedResumes(updated);
     lsSave(user.email, updated);
 
-    // Save to Supabase via direct fetch — bypasses any Supabase client hanging issues
-    console.log("Saving resume to Supabase, uid:", uid);
+    // Save to Supabase via API route (uses service role, bypasses RLS)
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      if (!token) { console.warn("No access token available"); return; }
-
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/saved_resumes`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "apikey": process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-            "Authorization": `Bearer ${token}`,
-            "Prefer": "return=minimal",
-          },
-          body: JSON.stringify({
-            id: newEntry.id,
-            user_id: uid,
-            title,
-            template_id: templateId,
-            resume_data: resume,
-            saved_at: newEntry.savedAt,
-          }),
-        }
-      );
+      const res = await fetch("/api/resumes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: newEntry.id,
+          user_id: uid,
+          title,
+          template_id: templateId,
+          resume_data: resume,
+          saved_at: newEntry.savedAt,
+        }),
+      });
       if (!res.ok) {
         const body = await res.text();
         console.error("Supabase insert failed:", res.status, body);
-      } else {
-        console.log("Resume saved to Supabase successfully:", newEntry.id);
       }
     } catch (e) {
       console.error("Supabase insert exception:", e);
