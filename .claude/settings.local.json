@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pgrep:*)",
+      "Bash(node -e:*)",
+      "Bash(find:*)",
+      "Bash(pkill:*)",
+      "Bash(npm run dev:*)",
+      "Bash(curl:*)",
+      "Bash(kill 13682)",
+      "Bash(npm install:*)",
+      "Bash(printf '\\\\n# Stripe — required for GPay / Card checkout\\\\n# Get your secret key from https://dashboard.stripe.com/apikeys\\\\nSTRIPE_SECRET_KEY=sk_test_YOUR_STRIPE_SECRET_KEY_HERE\\\\n\\\\n# Optional: set your production domain \\(defaults to http://localhost:3000\\)\\\\n# NEXT_PUBLIC_BASE_URL=https://yourdomain.com\\\\n')",
+      "Bash(npx tsc:*)",
+      "WebSearch",
+      "Bash(npm uninstall:*)",
+      "Bash(lsof -ti :3000 -ti :3001 | xargs kill -9 2>/dev/null; echo \"done\")",
+      "Bash(done)",
+      "Bash(grep:*)",
+      "Bash(test:*)",
+      "Bash(npm run build:*)",
+      "Bash(npx tsc --noEmit 2>&1; echo \"EXIT: $?\")",
+      "Bash(npx tsc --noEmit 2>&1; echo \"EXIT:$?\")",
+      "Bash(curl -s -X POST \"https://wjnrnukwahtsshozcvjh.supabase.co/auth/v1/token?grant_type=password\" \\\\\n  -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqbnJudWt3YWh0c3Nob3pjdmpoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NDMzOTQsImV4cCI6MjA4NzUxOTM5NH0.ZIeX3yBEL9qNijw7C3zv9QHoStzVEmeCcaeP6BV0PmQ\" \\\\\n  -H \"Content-Type: application/json\" \\\\\n  -d '{\"email\":\"test@test.com\",\"password\":\"wrongpassword\"}' 2>/dev/null | python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(d.get\\('error_description', d.get\\('error', 'unknown'\\)\\)\\)\")",
+      "Bash(kill %1 %2 2>/dev/null; true)"
+    ]
+  }
+}
