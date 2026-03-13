@@ -33,26 +33,6 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-// ── localStorage helpers ──────────────────────────────────────────────────────
-function lsKey(email: string) {
-  return `saved_resumes_${email}`;
-}
-function lsLoad(email: string): SavedResume[] {
-  try {
-    const raw = localStorage.getItem(lsKey(email));
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-function lsSave(email: string, resumes: SavedResume[]) {
-  try {
-    localStorage.setItem(lsKey(email), JSON.stringify(resumes));
-  } catch (e) {
-    console.warn("localStorage save failed:", e);
-  }
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -61,89 +41,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const supabase = createClient();
 
-  // Load resumes from Supabase (source of truth), merge with localStorage
-  async function loadResumes(userId: string, email: string) {
+  // Fetch resumes from Supabase via server API (source of truth)
+  async function fetchResumes(uid: string) {
     try {
-      const res = await fetch(`/api/resumes?user_id=${userId}`);
-
-      if (!res.ok) {
-        const body = await res.text();
-        console.error("Resumes fetch error:", res.status, body);
-        return;
-      }
-
+      const res = await fetch(`/api/resumes?user_id=${uid}`);
+      if (!res.ok) return;
       const data = await res.json();
-      const remote: SavedResume[] = data.map((row: Record<string, unknown>) => ({
+      const resumes: SavedResume[] = data.map((row: Record<string, unknown>) => ({
         id: row.id as string,
         title: row.title as string,
         templateId: row.template_id as TemplateId,
         resume: row.resume_data as GeneratedResume,
         savedAt: row.saved_at as string,
       }));
-
-      // Merge remote (Supabase) with localStorage, then set as state
-      const local = lsLoad(email);
-      const merged = mergeResumes(local, remote, email);
-      setSavedResumes(merged);
+      resumes.sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
+      setSavedResumes(resumes);
     } catch (e) {
-      console.error("loadResumes exception:", e);
+      console.error("fetchResumes error:", e);
     }
   }
 
-  // Merge two resume arrays: deduplicate by id, exclude deleted, sort newest first
-  function mergeResumes(current: SavedResume[], incoming: SavedResume[], email: string): SavedResume[] {
-    let deletedIds: Set<string> = new Set();
-    try {
-      const raw = localStorage.getItem(`deleted_resumes_${email}`);
-      deletedIds = new Set(raw ? JSON.parse(raw) : []);
-    } catch { /* ignore */ }
-
-    const map = new Map<string, SavedResume>();
-    [...current, ...incoming].forEach(r => {
-      if (!deletedIds.has(r.id)) map.set(r.id, r);
-    });
-    const merged = Array.from(map.values()).sort(
-      (a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime()
-    );
-    lsSave(email, merged);
-    return merged;
-  }
-
   useEffect(() => {
-    let currentUid: string | null = null;
+    let handled = false;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
         const email = session.user.email!;
         const uid = session.user.id;
 
-        // Skip duplicate events for the same user (e.g. TOKEN_REFRESHED after INITIAL_SESSION)
-        if (currentUid === uid && event !== "SIGNED_IN") return;
-        currentUid = uid;
+        // Only run setup once per mount (INITIAL_SESSION)
+        if (handled) return;
+        handled = true;
 
-        // Show localStorage resumes + cached hasPaid instantly
-        const cachedPaid = localStorage.getItem(`has_paid_${email}`) === "true";
-        setSavedResumes(lsLoad(email));
-        setUser({ name: "", email, hasPaid: cachedPaid });
         setUserId(uid);
         setInitialized(true);
 
-        // Fetch profile name + has_paid in background
-        try {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("name, has_paid")
-            .eq("id", uid)
-            .single();
-          const paid = profile?.has_paid ?? false;
-          if (paid) localStorage.setItem(`has_paid_${email}`, "true");
-          setUser({ name: profile?.name ?? "", email, hasPaid: paid });
-        } catch { /* ignore */ }
+        // Set user with cached name first
+        const cachedPaid = localStorage.getItem(`has_paid_${email}`) === "true";
+        setUser({ name: "", email, hasPaid: cachedPaid });
 
-        // Always load from Supabase — this is the cross-browser source of truth
-        loadResumes(uid, email);
+        // Fetch profile and resumes in parallel
+        const profilePromise = (async () => {
+          try {
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select("name, has_paid")
+              .eq("id", uid)
+              .single();
+            const paid = profile?.has_paid ?? false;
+            if (paid) localStorage.setItem(`has_paid_${email}`, "true");
+            setUser({ name: profile?.name ?? "", email, hasPaid: paid });
+          } catch { /* ignore */ }
+        })();
+
+        await Promise.all([profilePromise, fetchResumes(uid)]);
       } else {
-        currentUid = null;
+        handled = false;
         setUser(null);
         setUserId(null);
         setSavedResumes([]);
@@ -182,63 +135,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         setUser({ name: "", email: data.user.email!, hasPaid: false });
       }
-      await loadResumes(data.user.id, data.user.email!);
+      await fetchResumes(data.user.id);
     }
     return null;
   };
 
   const logout = async () => {
-    // Clear UI state immediately — do not wait for Supabase
     setUser(null);
     setUserId(null);
     setSavedResumes([]);
 
-    // Clear all Supabase auth tokens from localStorage
     try {
       Object.keys(localStorage).forEach((key) => {
         if (key.startsWith("sb-")) localStorage.removeItem(key);
       });
     } catch { /* ignore */ }
 
-    // Tell Supabase to sign out (best-effort)
     try {
       await supabase.auth.signOut();
     } catch { /* ignore */ }
 
-    // Hard reload to fully reset all in-memory state
     window.location.href = "/";
   };
 
   const saveResume = async (resume: GeneratedResume, templateId: TemplateId) => {
-    if (!user) { console.warn("saveResume: no user"); return; }
+    if (!user) return;
 
-    // Get userId from state, fall back to live session if state not ready yet
     let uid = userId;
     if (!uid) {
-      console.warn("saveResume: userId not in state, fetching from session");
       const { data: { session } } = await supabase.auth.getSession();
       uid = session?.user?.id ?? null;
     }
-    if (!uid) { console.warn("saveResume: no userId available, skipping Supabase insert"); return; }
+    if (!uid) return;
 
     const title = resume.personalInfo?.fullName
       ? `${resume.personalInfo.fullName} — ${resume.personalInfo.jobTitle || "Resume"}`
       : "My Resume";
 
     const newEntry: SavedResume = {
-      id: (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      id: crypto.randomUUID(),
       title,
       templateId,
       resume,
       savedAt: new Date().toISOString(),
     };
 
-    // Save to localStorage immediately
-    const updated = [newEntry, ...savedResumes];
-    setSavedResumes(updated);
-    lsSave(user.email, updated);
+    // Optimistic update
+    setSavedResumes(prev => [newEntry, ...prev]);
 
-    // Save to Supabase via API route (uses service role, bypasses RLS)
+    // Save to Supabase
     try {
       const res = await fetch("/api/resumes", {
         method: "POST",
@@ -253,32 +198,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }),
       });
       if (!res.ok) {
-        const body = await res.text();
-        console.error("Supabase insert failed:", res.status, body);
+        console.error("Save failed:", res.status, await res.text());
       }
     } catch (e) {
-      console.error("Supabase insert exception:", e);
+      console.error("Save error:", e);
     }
   };
 
   const deleteResume = async (id: string) => {
-    const updated = savedResumes.filter((r) => r.id !== id);
-    setSavedResumes(updated);
-    if (user) {
-      lsSave(user.email, updated);
-      // Track deleted ids so mergeResumes never re-adds them from Supabase
-      const deletedKey = `deleted_resumes_${user.email}`;
-      try {
-        const existing: string[] = JSON.parse(localStorage.getItem(deletedKey) || "[]");
-        localStorage.setItem(deletedKey, JSON.stringify([...new Set([...existing, id])]));
-      } catch { /* ignore */ }
-    }
+    setSavedResumes(prev => prev.filter(r => r.id !== id));
 
+    // Delete from Supabase via API route
     try {
-      const { error } = await supabase.from("saved_resumes").delete().eq("id", id);
-      if (error) console.warn("Supabase delete failed:", error.message);
+      const res = await fetch(`/api/resumes?id=${id}`, { method: "DELETE" });
+      if (!res.ok) console.warn("Delete failed:", res.status);
     } catch (e) {
-      console.warn("Supabase delete error:", e);
+      console.warn("Delete error:", e);
     }
   };
 
@@ -308,8 +243,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshResumes = async () => {
-    if (!user || !userId) return;
-    await loadResumes(userId, user.email);
+    if (!userId) return;
+    await fetchResumes(userId);
   };
 
   return (

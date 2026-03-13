@@ -53,11 +53,6 @@ export function printResume() {
         overflow: visible !important;
       }
 
-      /* Ensure template fills at least one full A4 page */
-      #resume-print-container > * {
-        min-height: 297mm !important;
-      }
-
       /* Preserve colors and backgrounds */
       * {
         -webkit-print-color-adjust: exact !important;
@@ -81,6 +76,17 @@ export function printResume() {
   clone.style.width = "100%";
 
   document.body.appendChild(clone);
+
+  // Measure the content height and round up to the nearest A4 page
+  // 1 A4 page = 297mm ≈ 1123px at 96dpi
+  const A4_HEIGHT_PX = 1123;
+  const templateEl = clone.firstElementChild as HTMLElement | null;
+  if (templateEl) {
+    const contentHeight = templateEl.scrollHeight;
+    const pages = Math.ceil(contentHeight / A4_HEIGHT_PX);
+    const targetHeight = pages * A4_HEIGHT_PX;
+    templateEl.style.minHeight = `${targetHeight}px`;
+  }
 
   window.print();
 
