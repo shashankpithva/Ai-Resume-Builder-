@@ -82,9 +82,9 @@ export default function LandingPage() {
       <section className="border-y border-stone-200/60 bg-white px-4 sm:px-6 py-5 sm:py-6">
         <div className="mx-auto max-w-4xl flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-12 text-stone-400">
           <div className="flex items-center gap-1.5">
-            {/* {[...Array(6)].map((_, i) => (
+            {{[...Array(6)].map((_, i) => (
               <Star key={i} className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-amber-400 text-amber-400" />
-            ))} */}
+            ))}}
             <span className="ml-2 text-xs sm:text-sm font-semibold text-stone-500">Loved by job seekers</span>
           </div>
           <div className="hidden sm:block w-px h-5 bg-stone-200" />
